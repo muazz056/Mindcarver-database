@@ -1,0 +1,16 @@
+id,name,email,department,salary,hire_date,active,age
+1,John Doe,john.doe@email.com,Engineering,75000.50,2020-01-15,true,28
+2,Jane Smith,jane.smith@email.com,Marketing,65000.00,2019-03-22,true,32
+3,Mike Johnson,mike.johnson@email.com,Engineering,80000.75,2021-07-10,true,35
+4,Sarah Wilson,sarah.wilson@email.com,HR,55000.00,2018-11-05,false,29
+5,David Brown,david.brown@email.com,Finance,70000.25,2020-09-18,true,31
+6,Lisa Garcia,lisa.garcia@email.com,Marketing,62000.00,2021-02-14,true,27
+7,Robert Martinez,robert.martinez@email.com,Engineering,85000.50,2017-05-20,true,38
+8,Emily Davis,emily.davis@email.com,HR,58000.00,2019-12-01,true,26
+9,James Rodriguez,james.rodriguez@email.com,Finance,72000.75,2020-06-30,false,33
+10,Maria Lopez,maria.lopez@email.com,Marketing,59000.00,2021-04-08,true,30
+11,Christopher Lee,christopher.lee@email.com,Engineering,78000.25,2018-08-12,true,34
+12,Jennifer Taylor,jennifer.taylor@email.com,HR,60000.00,2019-10-25,true,28
+13,William Anderson,william.anderson@email.com,Finance,74000.50,2020-12-03,true,36
+14,Jessica Thomas,jessica.thomas@email.com,Marketing,61000.75,2021-01-20,false,25
+15,Daniel Jackson,daniel.jackson@email.com,Engineering,82000.00,2017-09-15,true,39 
