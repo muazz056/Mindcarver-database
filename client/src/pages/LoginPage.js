@@ -17,22 +17,28 @@ const LoginPage = () => {
     setError('');
     
     try {
-      const response = await api.post('/api/login', { username, password });
-      if (response.data.message === 'Login successful') {
-        // Set local storage flag
-        localStorage.setItem('isAuthenticated', 'true');
-        // Update context
-        login();
+      // First, attempt to login
+      const loginResponse = await api.post('/api/login', { username, password });
+      
+      if (loginResponse.data.message === 'Login successful') {
+        // Wait a brief moment for the session to be properly saved
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         // Verify the session is active
-        await api.get('/api/auth/check');
-        // Navigate to view page
-        navigate('/view');
+        const authCheck = await api.get('/api/auth/check');
+        
+        if (authCheck.data.authenticated) {
+          // Update context
+          login();
+          // Navigate to view page
+          navigate('/view', { replace: true });
+        } else {
+          throw new Error('Session verification failed');
+        }
       }
     } catch (err) {
       console.error('Login error:', err);
       setError(err.response?.data?.error || 'Failed to login. Please try again.');
-      // Clear any stale auth state
-      localStorage.removeItem('isAuthenticated');
     } finally {
       setLoading(false);
     }

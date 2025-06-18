@@ -3,52 +3,77 @@ const cors = require('cors');
 const multer = require('multer');
 const csv = require('csv-parser');
 const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
 const session = require('express-session');
 
 const app = express();
-const upload = multer({ dest: 'uploads/' });
-
-// Environment variables
 const PORT = process.env.PORT || 5000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
-const SESSION_SECRET = process.env.SESSION_SECRET || 'your-secret-key';
-
-// Database setup
-const dbPath = path.join(__dirname, 'database.sqlite');
-const db = new sqlite3.Database(dbPath);
+const SESSION_SECRET = process.env.SESSION_SECRET || 'x8f2!pD9#kL3$qW7%zR5&vN1*mJ6(cY4)';
 
 // Middleware
+const corsOptions = {
+    origin: function(origin, callback) {
+        const allowedOrigins = ['http://localhost:3000', 'https://mindcarver-database-mc1.vercel.app'];
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            console.log('Blocked by CORS:', origin);
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
+};
+
+// Important: Order of middleware matters!
+// 1. Basic middleware
+app.set('trust proxy', 1);
+app.use(cors(corsOptions));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// 2. Session middleware (must be before any route handling)
 app.use(session({
-  secret: SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: NODE_ENV === 'production',
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
-  }
+    name: 'connect.sid',
+    secret: SESSION_SECRET,
+    resave: true,
+    saveUninitialized: true,
+    rolling: true,
+    cookie: {
+        httpOnly: true,
+        secure: false,
+        sameSite: 'lax',
+        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    }
 }));
 
-// CORS configuration
-const corsOptions = {
-  origin: NODE_ENV === 'production' 
-    ? ['https://your-frontend-domain.vercel.app'] // Replace with your Vercel domain
-    : 'http://localhost:3000',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-};
-app.use(cors(corsOptions));
+// Debug middleware to log session
+app.use((req, res, next) => {
+    console.log('Session ID:', req.sessionID);
+    console.log('Session:', req.session);
+    next();
+});
 
 // Configure multer for file uploads
-const uploadMulter = multer({ dest: 'uploads/' });
+const upload = multer({ dest: 'uploads/' });
 
 // Ensure uploads directory exists
 if (!fs.existsSync('uploads')) {
     fs.mkdirSync('uploads');
 }
+
+// Initialize SQLite database
+const dbPath = path.join(__dirname, 'database.sqlite');
+const db = new sqlite3.Database(dbPath, (err) => {
+    if (err) {
+        console.error('Error opening database:', err);
+    } else {
+        console.log('Connected to SQLite database');
+    }
+});
 
 // Helper function to detect column type
 function detectColumnType(value) {
@@ -117,44 +142,72 @@ function analyzeCSVColumns(data) {
 
 // Authentication middleware
 const authenticate = (req, res, next) => {
-  if (req.session && req.session.authenticated) {
-    next();
-  } else {
-    res.status(401).json({ error: 'Unauthorized' });
-  }
+    console.log('Auth check - Session:', req.session);
+    if (req.session && req.session.user === 'admin') {
+        next();
+    } else {
+        res.status(401).json({ error: 'Unauthorized' });
+    }
 };
 
 // Login endpoint
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
+    console.log('Login attempt:', { username, sessionID: req.sessionID });
+    
     if (username === 'admin' && password === 'Mindcarver1@') {
         req.session.user = 'admin';
-        res.json({ message: 'Login successful' });
+        req.session.save((err) => {
+            if (err) {
+                console.error('Session save error:', err);
+                return res.status(500).json({ error: 'Failed to save session' });
+            }
+            console.log('Session saved successfully:', req.sessionID);
+            res.json({ 
+                message: 'Login successful',
+                sessionID: req.sessionID
+            });
+        });
     } else {
         res.status(401).json({ error: 'Invalid credentials' });
     }
 });
 
+// Auth check endpoint
+app.get('/api/auth/check', (req, res) => {
+    console.log('Auth check - Session:', req.session);
+    if (req.session && req.session.user === 'admin') {
+        res.json({ authenticated: true });
+    } else {
+        res.status(401).json({ authenticated: false });
+    }
+});
+
 // Logout endpoint
 app.post('/api/logout', (req, res) => {
-    req.session.destroy(() => {
-        res.json({ message: 'Logged out' });
+    console.log('Logout - Session before destroy:', req.session);
+    req.session.destroy((err) => {
+        if (err) {
+            console.error('Session destruction error:', err);
+            return res.status(500).json({ error: 'Failed to logout' });
+        }
+        res.clearCookie('connect.sid');
+        console.log('Logout successful - Session destroyed');
+        res.json({ message: 'Logged out successfully' });
     });
 });
 
-// Protect all API routes except login/logout
-app.use((req, res, next) => {
+// Protected route middleware - Apply to all /api routes except login, logout, and auth check
+app.use('/api', (req, res, next) => {
     if (
-        req.path === '/api/login' ||
-        req.path === '/api/logout' ||
+        req.path === '/login' ||
+        req.path === '/logout' ||
+        req.path === '/auth/check' ||
         req.method === 'OPTIONS'
     ) {
         return next();
     }
-    if (req.path.startsWith('/api/')) {
-        return authenticate(req, res, next);
-    }
-    next();
+    authenticate(req, res, next);
 });
 
 // Routes
@@ -262,7 +315,7 @@ app.get('/api/tables/:tableName/schema', (req, res) => {
 });
 
 // Upload CSV and create/insert into table
-app.post('/api/upload', uploadMulter.single('csvFile'), (req, res) => {
+app.post('/api/upload', upload.single('csvFile'), (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
     }
@@ -526,26 +579,9 @@ app.post('/api/tables/:tableName/rows', async (req, res) => {
     }
 });
 
-// Serve static files in production
-if (NODE_ENV === 'production') {
-  // Serve frontend static files
-  app.use(express.static(path.join(__dirname, '../client/build')));
-
-  // Handle React routing, return all requests to React app
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
-  });
-}
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
-});
-
 // Start server
 app.listen(PORT, () => {
-  console.log(`Server running in ${NODE_ENV} mode on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
 
 // Graceful shutdown
