@@ -6,6 +6,7 @@ const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
 const path = require('path');
 const session = require('express-session');
+const MemoryStore = require('memorystore')(session);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -41,22 +42,26 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Create memory store
+const memoryStore = new MemoryStore({
+    checkPeriod: 86400000 // prune expired entries every 24h
+});
+
 // 2. Session middleware (must be before any route handling)
 const sessionConfig = {
+    store: memoryStore,
     name: 'connect.sid',
     secret: SESSION_SECRET,
-    resave: true,
+    resave: false,
     saveUninitialized: false,
     rolling: true,
-    unset: 'destroy',
     proxy: true,
     cookie: {
         httpOnly: true,
-        secure: false, // Must be false for non-HTTPS
-        sameSite: 'none', // Changed to none for cross-origin
+        secure: 'auto',
+        sameSite: 'none',
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-        path: '/',
-        domain: '.glitch.me' // Add the domain
+        path: '/'
     }
 };
 
@@ -71,8 +76,11 @@ app.use(session(sessionConfig));
 // Debug middleware to log session
 app.use((req, res, next) => {
     // Add CORS headers on every response
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Origin', req.headers.origin);
+    const origin = req.headers.origin;
+    if (allowedOrigins.includes(origin)) {
+        res.header('Access-Control-Allow-Origin', origin);
+        res.header('Access-Control-Allow-Credentials', 'true');
+    }
     
     console.log('Request URL:', req.url);
     console.log('Request Origin:', req.headers.origin);
@@ -196,9 +204,12 @@ app.post('/api/login', (req, res) => {
             }
             console.log('Session saved successfully. Session data:', req.session);
             
-            // Set additional headers for CORS
-            res.header('Access-Control-Allow-Credentials', 'true');
-            res.header('Access-Control-Allow-Origin', req.headers.origin);
+            // Set CORS headers only for allowed origins
+            const origin = req.headers.origin;
+            if (allowedOrigins.includes(origin)) {
+                res.header('Access-Control-Allow-Origin', origin);
+                res.header('Access-Control-Allow-Credentials', 'true');
+            }
             
             res.json({ 
                 message: 'Login successful',
@@ -216,6 +227,13 @@ app.get('/api/auth/check', (req, res) => {
         id: req.sessionID,
         session: req.session
     });
+    
+    // Set CORS headers only for allowed origins
+    const origin = req.headers.origin;
+    if (allowedOrigins.includes(origin)) {
+        res.header('Access-Control-Allow-Origin', origin);
+        res.header('Access-Control-Allow-Credentials', 'true');
+    }
     
     if (req.session && req.session.user === 'admin' && req.session.authenticated) {
         res.json({ authenticated: true });
