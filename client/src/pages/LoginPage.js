@@ -11,6 +11,21 @@ const LoginPage = () => {
   const navigate = useNavigate();
   const { login } = useContext(AuthContext);
 
+  const verifySession = async (retries = 3, delay = 500) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, delay));
+        const response = await api.get('/api/auth/check');
+        if (response.data.authenticated) {
+          return true;
+        }
+      } catch (err) {
+        console.log(`Session verification attempt ${i + 1} failed:`, err);
+      }
+    }
+    return false;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -18,27 +33,33 @@ const LoginPage = () => {
     
     try {
       // First, attempt to login
-      const loginResponse = await api.post('/api/login', { username, password });
+      const loginResponse = await api.post('/api/login', { 
+        username, 
+        password 
+      }, {
+        withCredentials: true
+      });
       
       if (loginResponse.data.message === 'Login successful') {
-        // Wait a brief moment for the session to be properly saved
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Verify the session with retries
+        const isVerified = await verifySession();
         
-        // Verify the session is active
-        const authCheck = await api.get('/api/auth/check');
-        
-        if (authCheck.data.authenticated) {
+        if (isVerified) {
           // Update context
           login();
           // Navigate to view page
           navigate('/view', { replace: true });
         } else {
-          throw new Error('Session verification failed');
+          throw new Error('Failed to verify session after multiple attempts');
         }
       }
     } catch (err) {
       console.error('Login error:', err);
-      setError(err.response?.data?.error || 'Failed to login. Please try again.');
+      setError(
+        err.response?.data?.error || 
+        err.message || 
+        'Failed to login. Please try again.'
+      );
     } finally {
       setLoading(false);
     }

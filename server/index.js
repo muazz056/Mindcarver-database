@@ -36,24 +36,36 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // 2. Session middleware (must be before any route handling)
-app.use(session({
+const sessionConfig = {
     name: 'connect.sid',
     secret: SESSION_SECRET,
-    resave: true,
-    saveUninitialized: true,
+    resave: false,
+    saveUninitialized: false,
     rolling: true,
+    unset: 'destroy',
     cookie: {
         httpOnly: true,
         secure: false,
         sameSite: 'lax',
-        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        path: '/'
     }
-}));
+};
+
+// Use different settings for production
+if (app.get('env') === 'production') {
+    app.set('trust proxy', 1);
+    sessionConfig.cookie.secure = true;
+    sessionConfig.proxy = true;
+}
+
+app.use(session(sessionConfig));
 
 // Debug middleware to log session
 app.use((req, res, next) => {
+    console.log('Request URL:', req.url);
     console.log('Session ID:', req.sessionID);
-    console.log('Session:', req.session);
+    console.log('Session Data:', req.session);
     next();
 });
 
@@ -142,7 +154,7 @@ function analyzeCSVColumns(data) {
 
 // Authentication middleware
 const authenticate = (req, res, next) => {
-    console.log('Auth check - Session:', req.session);
+    console.log('Auth check - Session Data:', req.session);
     if (req.session && req.session.user === 'admin') {
         next();
     } else {
@@ -156,13 +168,17 @@ app.post('/api/login', (req, res) => {
     console.log('Login attempt:', { username, sessionID: req.sessionID });
     
     if (username === 'admin' && password === 'Mindcarver1@') {
+        // Set session data
         req.session.user = 'admin';
+        req.session.authenticated = true;
+        
+        // Save session explicitly
         req.session.save((err) => {
             if (err) {
                 console.error('Session save error:', err);
                 return res.status(500).json({ error: 'Failed to save session' });
             }
-            console.log('Session saved successfully:', req.sessionID);
+            console.log('Session saved successfully. Session data:', req.session);
             res.json({ 
                 message: 'Login successful',
                 sessionID: req.sessionID
@@ -175,8 +191,12 @@ app.post('/api/login', (req, res) => {
 
 // Auth check endpoint
 app.get('/api/auth/check', (req, res) => {
-    console.log('Auth check - Session:', req.session);
-    if (req.session && req.session.user === 'admin') {
+    console.log('Auth check - Full session data:', {
+        id: req.sessionID,
+        session: req.session
+    });
+    
+    if (req.session && req.session.user === 'admin' && req.session.authenticated) {
         res.json({ authenticated: true });
     } else {
         res.status(401).json({ authenticated: false });
@@ -186,15 +206,24 @@ app.get('/api/auth/check', (req, res) => {
 // Logout endpoint
 app.post('/api/logout', (req, res) => {
     console.log('Logout - Session before destroy:', req.session);
-    req.session.destroy((err) => {
-        if (err) {
-            console.error('Session destruction error:', err);
-            return res.status(500).json({ error: 'Failed to logout' });
-        }
-        res.clearCookie('connect.sid');
-        console.log('Logout successful - Session destroyed');
-        res.json({ message: 'Logged out successfully' });
-    });
+    if (req.session) {
+        req.session.destroy((err) => {
+            if (err) {
+                console.error('Session destruction error:', err);
+                return res.status(500).json({ error: 'Failed to logout' });
+            }
+            res.clearCookie('connect.sid', {
+                path: '/',
+                httpOnly: true,
+                secure: false,
+                sameSite: 'lax'
+            });
+            console.log('Logout successful - Session destroyed');
+            res.json({ message: 'Logged out successfully' });
+        });
+    } else {
+        res.json({ message: 'Already logged out' });
+    }
 });
 
 // Protected route middleware - Apply to all /api routes except login, logout, and auth check
