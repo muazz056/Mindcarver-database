@@ -1,7 +1,7 @@
 import React, { useState, useContext } from 'react';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../App';
+import api from '../api';
 
 const LoginPage = () => {
   const [username, setUsername] = useState('');
@@ -16,11 +16,13 @@ const LoginPage = () => {
     setLoading(true);
     setError('');
     try {
-      await axios.post('/api/login', { username, password });
-      login(); // Call the login method from context
-      navigate('/view');
+      const response = await api.post('/api/login', { username, password });
+      if (response.data.message === 'Login successful') {
+        login(); // Call the login method from context
+        navigate('/view');
+      }
     } catch (err) {
-      setError('Invalid username or password');
+      setError(err.response?.data?.error || 'Invalid username or password');
       console.error('Login error:', err);
     } finally {
       setLoading(false);
