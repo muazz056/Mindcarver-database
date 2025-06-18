@@ -12,10 +12,15 @@ const PORT = process.env.PORT || 5000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'x8f2!pD9#kL3$qW7%zR5&vN1*mJ6(cY4)';
 
-// Middleware
+// CORS Configuration with all possible frontend URLs
+const allowedOrigins = [
+    'http://localhost:3000',
+    'https://mindcarver-database-mc1.vercel.app',
+    'https://mindcarver-database-mc1-nqh1nwugh-muazs-projects-f59b1282.vercel.app'
+];
+
 const corsOptions = {
     origin: function(origin, callback) {
-        const allowedOrigins = ['http://localhost:3000', 'https://mindcarver-database-mc1.vercel.app'];
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
@@ -25,7 +30,8 @@ const corsOptions = {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+    exposedHeaders: ['set-cookie']
 };
 
 // Important: Order of middleware matters!
@@ -39,16 +45,18 @@ app.use(express.urlencoded({ extended: true }));
 const sessionConfig = {
     name: 'connect.sid',
     secret: SESSION_SECRET,
-    resave: false,
+    resave: true,
     saveUninitialized: false,
     rolling: true,
     unset: 'destroy',
+    proxy: true,
     cookie: {
         httpOnly: true,
-        secure: false,
-        sameSite: 'lax',
+        secure: false, // Must be false for non-HTTPS
+        sameSite: 'none', // Changed to none for cross-origin
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-        path: '/'
+        path: '/',
+        domain: '.glitch.me' // Add the domain
     }
 };
 
@@ -56,14 +64,18 @@ const sessionConfig = {
 if (app.get('env') === 'production') {
     app.set('trust proxy', 1);
     sessionConfig.cookie.secure = true;
-    sessionConfig.proxy = true;
 }
 
 app.use(session(sessionConfig));
 
 // Debug middleware to log session
 app.use((req, res, next) => {
+    // Add CORS headers on every response
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Origin', req.headers.origin);
+    
     console.log('Request URL:', req.url);
+    console.log('Request Origin:', req.headers.origin);
     console.log('Session ID:', req.sessionID);
     console.log('Session Data:', req.session);
     next();
@@ -155,7 +167,7 @@ function analyzeCSVColumns(data) {
 // Authentication middleware
 const authenticate = (req, res, next) => {
     console.log('Auth check - Session Data:', req.session);
-    if (req.session && req.session.user === 'admin') {
+    if (req.session && req.session.user === 'admin' && req.session.authenticated) {
         next();
     } else {
         res.status(401).json({ error: 'Unauthorized' });
@@ -165,7 +177,11 @@ const authenticate = (req, res, next) => {
 // Login endpoint
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
-    console.log('Login attempt:', { username, sessionID: req.sessionID });
+    console.log('Login attempt:', { 
+        username,
+        sessionID: req.sessionID,
+        origin: req.headers.origin 
+    });
     
     if (username === 'admin' && password === 'Mindcarver1@') {
         // Set session data
@@ -179,6 +195,11 @@ app.post('/api/login', (req, res) => {
                 return res.status(500).json({ error: 'Failed to save session' });
             }
             console.log('Session saved successfully. Session data:', req.session);
+            
+            // Set additional headers for CORS
+            res.header('Access-Control-Allow-Credentials', 'true');
+            res.header('Access-Control-Allow-Origin', req.headers.origin);
+            
             res.json({ 
                 message: 'Login successful',
                 sessionID: req.sessionID

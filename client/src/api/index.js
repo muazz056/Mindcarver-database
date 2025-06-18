@@ -9,10 +9,12 @@ const api = axios.create({
   }
 });
 
-// Add request interceptor to include credentials
+// Add request interceptor to include credentials and origin
 api.interceptors.request.use(
   (config) => {
     config.withCredentials = true;
+    // Add origin header
+    config.headers['Origin'] = window.location.origin;
     return config;
   },
   (error) => {
